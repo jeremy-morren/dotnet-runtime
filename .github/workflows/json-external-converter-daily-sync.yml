@@ -1,0 +1,58 @@
+name: Rebase json-external-converter onto upstream main
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: json-external-converter-daily-sync
+  cancel-in-progress: true
+
+jobs:
+  rebase-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Sync main and rebase json-external-converter
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          trap 'echo "::error::failed to rebase to remote main"; exit 1' ERR
+
+          git remote get-url upstream >/dev/null 2>&1 || git remote add upstream https://github.com/dotnet/runtime.git
+          git fetch upstream main
+          git checkout -B main FETCH_HEAD
+          git push --force-with-lease origin main
+
+          git checkout json-external-converter
+          git rebase main
+
+          ./build.sh libs -c Release
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/package-output"
+          ./dotnet.sh pack ./src/libraries/System.Text.Json/src/ \
+            -c Release \
+            -p:PackageVersion=11.0.0-dev-external-converter \
+            -o "$GITHUB_WORKSPACE/artifacts/package-output"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: system-text-json-package
+          path: artifacts/package-output/*.nupkg
+          if-no-files-found: error
+
+      - name: Push rebased json-external-converter branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          trap 'echo "::error::failed to rebase to remote main"; exit 1' ERR
+
+          git push --force-with-lease origin json-external-converter

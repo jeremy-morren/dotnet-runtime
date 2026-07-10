@@ -1,0 +1,37 @@
+name: System.Text.Json package build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: system-text-json-package-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Pack System.Text.Json
+        shell: cmd
+        env:
+          PACKAGE_VERSION: 11.0.0-dev-external-converter
+          PACKAGE_OUTPUT_DIR: ${{ runner.temp }}\artifacts\package-output
+        run: |
+          build.cmd libs -c Release
+          if not exist "%PACKAGE_OUTPUT_DIR%" mkdir "%PACKAGE_OUTPUT_DIR%"
+          dotnet.cmd pack .\src\libraries\System.Text.Json\src\ -c Release -p:PackageVersion=%PACKAGE_VERSION% -o "%PACKAGE_OUTPUT_DIR%"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: system-text-json-package
+          path: ${{ runner.temp }}\artifacts\package-output/*.nupkg
+          if-no-files-found: error
