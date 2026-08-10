@@ -2,6 +2,16 @@
 <xliff xmlns="urn:oasis:names:tc:xliff:document:1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.2" xsi:schemaLocation="urn:oasis:names:tc:xliff:document:1.2 xliff-core-1.2-transitional.xsd">
   <file datatype="xml" source-language="en" target-language="de" original="../Strings.resx">
     <body>
+      <trans-unit id="ConflictingExternalConverterRegistrationMessageFormat">
+        <source>The external converter '{1}' for type '{0}' has already been registered. The conflicting converter '{2}' will be ignored.</source>
+        <target state="new">The external converter '{1}' for type '{0}' has already been registered. The conflicting converter '{2}' will be ignored.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ConflictingExternalConverterRegistrationTitle">
+        <source>Conflicting external converter registration.</source>
+        <target state="new">Conflicting external converter registration.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="ContextClassesMustBePartialMessageFormat">
         <source>Derived 'JsonSerializerContext' type '{0}' specifies JSON-serializable types. The type and all containing types must be made partial to kick off source generation.</source>
         <target state="translated">Der abgeleitete JsonSerializerContext-Typ "{0}" gibt serialisierbare JSON-Typen an. Der Typ und alle enthaltenden Typen müssen partiell sein, um die Quellgenerierung zu starten.</target>
@@ -32,6 +42,16 @@
         <target state="translated">Von JsonConverterAttribute abgeleitete Attribute werden vom Quellgenerator nicht unterstützt.</target>
         <note />
       </trans-unit>
+      <trans-unit id="DuplicateExternalConverterRegistrationMessageFormat">
+        <source>The external converter '{1}' for type '{0}' has already been registered. The duplicate registration will be ignored.</source>
+        <target state="new">The external converter '{1}' for type '{0}' has already been registered. The duplicate registration will be ignored.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="DuplicateExternalConverterRegistrationTitle">
+        <source>Duplicate external converter registration.</source>
+        <target state="new">Duplicate external converter registration.</target>
+        <note />
+      </trans-unit>
       <trans-unit id="DuplicateTypeNameMessageFormat">
         <source>There are multiple types named '{0}'. Source was generated for the first one detected. Use 'JsonSerializableAttribute.TypeInfoPropertyName' to resolve this collision.</source>
         <target state="translated">Es gibt mehrere Typen mit dem Namen "{0}". Die Quelle wurde für die erste erkannte Quelle generiert. Verwenden Sie "JsonSerializableAttribute.TypeInfoPropertyName", um diesen Konflikt zu beheben.</target>
@@ -40,6 +60,16 @@
       <trans-unit id="DuplicateTypeNameTitle">
         <source>Duplicate type name.</source>
         <target state="translated">Doppelter Typname</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ExternalConverterTargetTypeNotInferredMessageFormat">
+        <source>The converter type '{0}' specified on context '{1}' must derive from closed 'JsonConverter&lt;T&gt;' to be used with 'JsonExternalConverterAttribute'.</source>
+        <target state="new">The converter type '{0}' specified on context '{1}' must derive from closed 'JsonConverter&lt;T&gt;' to be used with 'JsonExternalConverterAttribute'.</target>
+        <note />
+      </trans-unit>
+      <trans-unit id="ExternalConverterTargetTypeNotInferredTitle">
+        <source>External converter target type could not be inferred.</source>
+        <target state="new">External converter target type could not be inferred.</target>
         <note />
       </trans-unit>
       <trans-unit id="FastPathPolymorphismNotSupportedMessageFormat">

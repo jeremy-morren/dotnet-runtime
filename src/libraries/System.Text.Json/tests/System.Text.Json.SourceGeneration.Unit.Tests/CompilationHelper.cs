@@ -829,6 +829,32 @@ namespace System.Text.Json.SourceGeneration.UnitTests
             return CreateCompilation(source);
         }
 
+        /// <summary>
+        /// Appends a minimal test-only declaration when the loaded runtime assembly does not contain <c>JsonExternalConverterAttribute</c>
+        /// and returns the original source unchanged otherwise.
+        /// </summary>
+        public static string AddExternalConverterAttributeDeclaration(string source)
+        {
+            if (typeof(JsonSerializerOptions).Assembly.GetType("System.Text.Json.Serialization.JsonExternalConverterAttribute") is not null)
+            {
+                return source;
+            }
+
+            const string declaration = """
+                namespace System.Text.Json.Serialization
+                {
+                    [global::System.AttributeUsage(global::System.AttributeTargets.Class, AllowMultiple = true)]
+                    public sealed class JsonExternalConverterAttribute : global::System.Text.Json.Serialization.JsonAttribute
+                    {
+                        public JsonExternalConverterAttribute(global::System.Type converterType) => ConverterType = converterType;
+                        public global::System.Type ConverterType { get; }
+                    }
+                }
+                """;
+
+            return declaration + "\n" + source;
+        }
+
         internal static void AssertEqualDiagnosticMessages(
             IEnumerable<DiagnosticData> expectedDiags,
             IEnumerable<Diagnostic> actualDiags)

@@ -179,6 +179,9 @@ namespace System.Text.Json.SourceGeneration
         public INamedTypeSymbol? JsonConverterType => GetOrResolveType("System.Text.Json.Serialization.JsonConverter", ref _JsonConverterType);
         private Option<INamedTypeSymbol?> _JsonConverterType;
 
+        public INamedTypeSymbol? JsonConverterOfTType => GetOrResolveType("System.Text.Json.Serialization.JsonConverter`1", ref _JsonConverterOfTType);
+        private Option<INamedTypeSymbol?> _JsonConverterOfTType;
+
         public INamedTypeSymbol? JsonSerializerContextType => GetOrResolveType("System.Text.Json.Serialization.JsonSerializerContext", ref _JsonSerializerContextType);
         private Option<INamedTypeSymbol?> _JsonSerializerContextType;
 
@@ -206,6 +209,9 @@ namespace System.Text.Json.SourceGeneration
         // System.Text.Json attributes
         public INamedTypeSymbol? JsonConverterAttributeType => GetOrResolveType("System.Text.Json.Serialization.JsonConverterAttribute", ref _JsonConverterAttributeType);
         private Option<INamedTypeSymbol?> _JsonConverterAttributeType;
+
+        public INamedTypeSymbol? JsonExternalConverterAttributeType => GetOrResolveType("System.Text.Json.Serialization.JsonExternalConverterAttribute", ref _JsonExternalConverterAttributeType);
+        private Option<INamedTypeSymbol?> _JsonExternalConverterAttributeType;
 
         public INamedTypeSymbol? JsonDerivedTypeAttributeType => GetOrResolveType("System.Text.Json.Serialization.JsonDerivedTypeAttribute", ref _JsonDerivedTypeAttributeType);
         private Option<INamedTypeSymbol?> _JsonDerivedTypeAttributeType;

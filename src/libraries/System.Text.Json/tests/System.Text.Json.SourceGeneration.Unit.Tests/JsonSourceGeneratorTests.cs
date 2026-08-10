@@ -1,6 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -685,6 +686,111 @@ namespace System.Text.Json.SourceGeneration.UnitTests
             result.AssertContainsType("global::Test.Sample");
             result.AssertContainsType("global::System.DateTimeOffset");
             result.AssertContainsType("global::System.DateTimeOffset?");
+        }
+
+        [Fact]
+        public void ExternalConverterOnContextMatchesTypeLevelConverterOutput()
+        {
+            const string typeLevelSource =
+                """
+                using System;
+                using System.Text.Json;
+                using System.Text.Json.Serialization;
+
+                namespace TestApp
+                {
+                    [JsonConverter(typeof(StrongIdConverter))]
+                    public readonly struct StrongId
+                    {
+                        public StrongId(int value) => Value = value;
+                        public int Value { get; }
+                    }
+
+                    public sealed class StrongIdConverter : JsonConverter<StrongId>
+                    {
+                        public override StrongId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+                            => new(reader.GetInt32());
+
+                        public override void Write(Utf8JsonWriter writer, StrongId value, JsonSerializerOptions options)
+                            => writer.WriteNumberValue(value.Value);
+                    }
+
+                    public sealed class Model
+                    {
+                        public StrongId Id { get; set; }
+                        public StrongId? NullableId { get; set; }
+                    }
+
+                    [JsonSerializable(typeof(Model))]
+                    internal partial class MyContext : JsonSerializerContext { }
+                }
+                """;
+
+            const string externalSource =
+                """
+                using System;
+                using System.Text.Json;
+                using System.Text.Json.Serialization;
+
+                namespace TestApp
+                {
+                    public readonly struct StrongId
+                    {
+                        public StrongId(int value) => Value = value;
+                        public int Value { get; }
+                    }
+
+                    public sealed class StrongIdConverter : JsonConverter<StrongId>
+                    {
+                        public override StrongId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+                            => new(reader.GetInt32());
+
+                        public override void Write(Utf8JsonWriter writer, StrongId value, JsonSerializerOptions options)
+                            => writer.WriteNumberValue(value.Value);
+                    }
+
+                    [JsonExternalConverter(typeof(StrongIdConverter))]
+                    public abstract class StrongIdContextBase : JsonSerializerContext
+                    {
+                        protected StrongIdContextBase(JsonSerializerOptions options) : base(options) { }
+                    }
+
+                    public sealed class Model
+                    {
+                        public StrongId Id { get; set; }
+                        public StrongId? NullableId { get; set; }
+                    }
+
+                    [JsonSerializable(typeof(Model))]
+                    internal partial class MyContext : StrongIdContextBase { }
+                }
+                """;
+
+            Compilation typeLevelCompilation = CompilationHelper.CreateCompilation(typeLevelSource);
+            JsonSourceGeneratorResult typeLevelResult = CompilationHelper.RunJsonSourceGenerator(typeLevelCompilation, logger: logger);
+
+            Compilation externalCompilation = CompilationHelper.CreateCompilation(CompilationHelper.AddExternalConverterAttributeDeclaration(externalSource));
+            JsonSourceGeneratorResult externalResult = CompilationHelper.RunJsonSourceGenerator(externalCompilation, logger: logger);
+
+            string[] typeLevelTypes = typeLevelResult.AllGeneratedTypes.Select(t => t.TypeRef.FullyQualifiedName).OrderBy(x => x).ToArray();
+            string[] externalTypes = externalResult.AllGeneratedTypes.Select(t => t.TypeRef.FullyQualifiedName).OrderBy(x => x).ToArray();
+            Assert.Equal(typeLevelTypes, externalTypes);
+
+            static System.Collections.Generic.Dictionary<string, string> GetGeneratedOutputMap(Compilation inputCompilation, Compilation outputCompilation)
+            {
+                var inputPaths = new System.Collections.Generic.HashSet<string>(inputCompilation.SyntaxTrees.Select(t => t.FilePath), StringComparer.Ordinal);
+                var generatedTrees = outputCompilation.SyntaxTrees.Where(t => !inputPaths.Contains(t.FilePath));
+                return generatedTrees.ToDictionary(t => t.FilePath, t => t.GetText().ToString(), StringComparer.Ordinal);
+            }
+
+            var typeLevelGenerated = GetGeneratedOutputMap(typeLevelCompilation, typeLevelResult.NewCompilation);
+            var externalGenerated = GetGeneratedOutputMap(externalCompilation, externalResult.NewCompilation);
+
+            Assert.Equal(typeLevelGenerated.Keys.OrderBy(x => x), externalGenerated.Keys.OrderBy(x => x));
+            foreach (KeyValuePair<string, string> generatedFile in typeLevelGenerated)
+            {
+                Assert.Equal(generatedFile.Value, externalGenerated[generatedFile.Key]);
+            }
         }
 
         [Fact]

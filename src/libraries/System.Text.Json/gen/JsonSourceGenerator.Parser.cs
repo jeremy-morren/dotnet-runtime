@@ -46,6 +46,7 @@ namespace System.Text.Json.SourceGeneration
 #pragma warning disable RS1024 // Compare symbols correctly https://github.com/dotnet/roslyn-analyzers/issues/5804
             private readonly Dictionary<ITypeSymbol, TypeGenerationSpec> _generatedTypes = new(SymbolEqualityComparer.Default);
 #pragma warning restore
+            private Dictionary<ITypeSymbol, ExternalConverterRegistration>? _externalConverterRegistrations;
 
             public List<DiagnosticInfo> Diagnostics { get; } = new();
             private Location? _contextClassLocation;
@@ -105,6 +106,8 @@ namespace System.Text.Json.SourceGeneration
                     out List<TypeToGenerate>? rootSerializableTypes,
                     out SourceGenerationOptionsSpec? options);
 
+                CollectExternalConverterAttributes(contextTypeSymbol);
+
                 if (rootSerializableTypes is null)
                 {
                     // No types were annotated with JsonSerializableAttribute.
@@ -162,6 +165,7 @@ namespace System.Text.Json.SourceGeneration
                 // Clear the caches of generated metadata between the processing of context classes.
                 _generatedTypes.Clear();
                 _typesToGenerate.Clear();
+                _externalConverterRegistrations = null;
                 _contextClassLocation = null;
                 return contextGenSpec;
             }
@@ -256,6 +260,128 @@ namespace System.Text.Json.SourceGeneration
                         options = ParseJsonSourceGenerationOptionsAttribute(contextClassSymbol, attributeData);
                     }
                 }
+            }
+
+            private void CollectExternalConverterAttributes(INamedTypeSymbol contextClassSymbol)
+            {
+                _externalConverterRegistrations = null;
+
+                if (_knownSymbols.JsonExternalConverterAttributeType is null)
+                {
+                    return;
+                }
+
+#pragma warning disable RS1024 // Compare symbols correctly https://github.com/dotnet/roslyn-analyzers/issues/5804
+                _externalConverterRegistrations = new(SymbolEqualityComparer.Default);
+#pragma warning restore
+
+                for (INamedTypeSymbol? current = contextClassSymbol; current is not null; current = current.BaseType)
+                {
+                    foreach (AttributeData attributeData in current.GetAttributes())
+                    {
+                        if (SymbolEqualityComparer.Default.Equals(attributeData.AttributeClass, _knownSymbols.JsonExternalConverterAttributeType))
+                        {
+                            ProcessExternalConverterAttribute(contextClassSymbol, current, attributeData);
+                        }
+                    }
+                }
+
+                if (_externalConverterRegistrations.Count == 0)
+                {
+                    _externalConverterRegistrations = null;
+                }
+            }
+
+            private void ProcessExternalConverterAttribute(INamedTypeSymbol contextType, ISymbol declaringSymbol, AttributeData attributeData)
+            {
+                Debug.Assert(_externalConverterRegistrations is not null);
+
+                Debug.Assert(attributeData.ConstructorArguments.Length == 1 && attributeData.ConstructorArguments[0].Value is null or ITypeSymbol);
+                var converterType = (ITypeSymbol?)attributeData.ConstructorArguments[0].Value;
+
+                if (converterType is not INamedTypeSymbol namedConverterType ||
+                    (!namedConverterType.IsUnboundGenericType && !_knownSymbols.JsonConverterType.IsAssignableFrom(namedConverterType)))
+                {
+                    ReportDiagnostic(DiagnosticDescriptors.JsonConverterAttributeInvalidType, attributeData.GetLocation(), converterType?.ToDisplayString() ?? "null", declaringSymbol.ToDisplayString());
+                    return;
+                }
+
+                if (!TryGetExternalConverterTargetType(namedConverterType, out ITypeSymbol? targetType))
+                {
+                    ReportDiagnostic(
+                        DiagnosticDescriptors.ExternalConverterTargetTypeNotInferred,
+                        attributeData.GetLocation(),
+                        converterType?.ToDisplayString() ?? "null",
+                        declaringSymbol.ToDisplayString());
+                    return;
+                }
+
+                TypeRef? resolvedConverterType = GetConverterTypeFromAttribute(contextType, converterType, declaringSymbol, attributeData);
+                if (resolvedConverterType is null)
+                {
+                    return;
+                }
+
+                targetType = _knownSymbols.Compilation.EraseCompileTimeMetadata(targetType);
+                string converterDisplayName = converterType.ToDisplayString();
+
+                var registration = new ExternalConverterRegistration
+                {
+                    ConverterType = resolvedConverterType,
+                    ConverterDisplayName = converterDisplayName,
+                };
+
+                if (!_externalConverterRegistrations.TryAdd(targetType, registration))
+                {
+                    ExternalConverterRegistration existingRegistration = _externalConverterRegistrations[targetType];
+
+                    ReportDiagnostic(
+                        existingRegistration.ConverterType.Equals(resolvedConverterType)
+                            ? DiagnosticDescriptors.DuplicateExternalConverterRegistration
+                            : DiagnosticDescriptors.ConflictingExternalConverterRegistration,
+                        attributeData.GetLocation(),
+                        targetType.ToDisplayString(),
+                        existingRegistration.ConverterDisplayName,
+                        converterDisplayName);
+                }
+            }
+
+            private bool TryGetExternalConverterTargetType(INamedTypeSymbol converterType, [NotNullWhen(true)] out ITypeSymbol? targetType)
+            {
+                targetType = null;
+
+                if (_knownSymbols.JsonConverterOfTType is null)
+                {
+                    return false;
+                }
+
+                for (INamedTypeSymbol? current = converterType; current is not null; current = current.BaseType)
+                {
+                    if (!SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, _knownSymbols.JsonConverterOfTType))
+                    {
+                        continue;
+                    }
+
+                    targetType = current.TypeArguments[0];
+                    return targetType is not IErrorTypeSymbol &&
+                           !ContainsOpenTypeParameters(targetType) &&
+                           targetType is not INamedTypeSymbol { IsUnboundGenericType: true };
+                }
+
+                return false;
+            }
+
+            private bool TryGetExactExternalConverterRegistration(ITypeSymbol type, [NotNullWhen(true)] out ExternalConverterRegistration? registration)
+            {
+                registration = null;
+
+                if (_externalConverterRegistrations is null)
+                {
+                    return false;
+                }
+
+                type = _knownSymbols.Compilation.EraseCompileTimeMetadata(type);
+                return _externalConverterRegistrations.TryGetValue(type, out registration);
             }
 
             private SourceGenerationOptionsSpec ParseJsonSourceGenerationOptionsAttribute(INamedTypeSymbol contextType, AttributeData attributeData)
@@ -533,6 +659,12 @@ namespace System.Text.Json.SourceGeneration
                     out bool foundJsonConverterAttribute,
                     out TypeRef? customConverterType,
                     out bool isPolymorphic);
+
+                if (TryGetExactExternalConverterRegistration(typeToGenerate.Type, out ExternalConverterRegistration? externalConverterRegistration))
+                {
+                    customConverterType = externalConverterRegistration.ConverterType;
+                    foundJsonConverterAttribute = true;
+                }
 
                 if (type is { IsRefLikeType: true } or INamedTypeSymbol { IsUnboundGenericType: true } or IErrorTypeSymbol)
                 {
@@ -1852,6 +1984,24 @@ namespace System.Text.Json.SourceGeneration
                         builtInSupportTypes.Add(type);
                     }
                 }
+            }
+
+            private static bool ContainsOpenTypeParameters(ITypeSymbol type)
+            {
+                return type switch
+                {
+                    ITypeParameterSymbol => true,
+                    IArrayTypeSymbol arrayType => ContainsOpenTypeParameters(arrayType.ElementType),
+                    IPointerTypeSymbol pointerType => ContainsOpenTypeParameters(pointerType.PointedAtType),
+                    INamedTypeSymbol namedType => namedType.TypeArguments.Any(ContainsOpenTypeParameters),
+                    _ => false
+                };
+            }
+
+            private sealed class ExternalConverterRegistration
+            {
+                public required TypeRef ConverterType { get; init; }
+                public required string ConverterDisplayName { get; init; }
             }
 
             private readonly struct TypeToGenerate

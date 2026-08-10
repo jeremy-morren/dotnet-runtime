@@ -213,4 +213,22 @@
   <data name="TypeContainsRefLikeMemberFormat" xml:space="preserve">
     <value>The type '{0}' includes the ref like property, field or constructor parameter '{1}'. No source code will be generated for the property, field or constructor.</value>
   </data>
+  <data name="DuplicateExternalConverterRegistrationTitle" xml:space="preserve">
+    <value>Duplicate external converter registration.</value>
+  </data>
+  <data name="DuplicateExternalConverterRegistrationMessageFormat" xml:space="preserve">
+    <value>The external converter '{1}' for type '{0}' has already been registered. The duplicate registration will be ignored.</value>
+  </data>
+  <data name="ConflictingExternalConverterRegistrationTitle" xml:space="preserve">
+    <value>Conflicting external converter registration.</value>
+  </data>
+  <data name="ConflictingExternalConverterRegistrationMessageFormat" xml:space="preserve">
+    <value>The external converter '{1}' for type '{0}' has already been registered. The conflicting converter '{2}' will be ignored.</value>
+  </data>
+  <data name="ExternalConverterTargetTypeNotInferredTitle" xml:space="preserve">
+    <value>External converter target type could not be inferred.</value>
+  </data>
+  <data name="ExternalConverterTargetTypeNotInferredMessageFormat" xml:space="preserve">
+    <value>The converter type '{0}' specified on context '{1}' must derive from closed 'JsonConverter&lt;T&gt;' to be used with 'JsonExternalConverterAttribute'.</value>
+  </data>
 </root>
