@@ -1,0 +1,134 @@
+name: Pack System.Text.Json
+
+on:
+  push:
+    branches:
+      - 'json-external-converter-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_SUFFIX: '-extra-converter.${{ github.run_number }}'
+  ARTIFACT_NAME: System.Text.Json_ExtraConverter
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    env:
+      BUILD_CONFIGURATION: Release
+      STJ_PROJECT_DIR: ${{ github.workspace }}\src\libraries\System.Text.Json
+      STJ_SOLUTION_NAME: System.Text.Json.slnx
+      ARTIFACTS_DIR: artifacts
+      TEST_RESULTS_DIR: test-results
+
+    permissions:
+      checks: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # - name: Cache CLR, native, and Mono build artifacts
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: |
+      #       artifacts/**/coreclr*
+      #       artifacts/**/corehost*
+      #       artifacts/**/crossgen*
+      #       artifacts/**/mono*
+      #       artifacts/**/Mono.Linker*
+      #     key: ${{ runner.os }}-clr-${{ hashFiles('Directory.*', 'build.*', 'global.json', 'dotnet.*', 'eng/**', 'src/coreclr/**', 'src/mono/**', 'src/native/**') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-clr-
+
+      # - name: Install prequisites
+      #   shell: bash
+      #   run: sudo bash eng/common/native/install-dependencies.sh
+
+      # See docs/workflow/building/libraries/README.md
+
+      # 1) Build prerequisites
+      - name: Build prerequisites
+        shell: cmd
+        run: .\build.cmd -subset clr+libs -c "${{ env.BUILD_CONFIGURATION }}"
+
+      # 2) Pack System.Text.Json and publish the nupkg
+      - name: Pack solution
+        shell: cmd
+        run: >-
+          .\build.cmd -subset libs -pack 
+          -projects "${{ env.STJ_PROJECT_DIR }}\${{ env.STJ_SOLUTION_NAME }}"
+          -c "${{ env.BUILD_CONFIGURATION }}"
+          /p:EnablePackageValidation=false /p:StabilizePackageVersion=true 
+          "/p:SystemTextJsonSuffix=${{ env.PACKAGE_SUFFIX }}"
+
+      - name: Locate System.Text.Json packages
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path ./artifacts/packages/Release/Shipping -Filter 'System.Text.Json.*'
+          $files | Format-Table -Property Name,LastWriteTime,Length
+          if ($files.Count -eq 0) {
+              throw "No System.Text.Json packages found in artifacts/packages/Release/Shipping"
+          }
+
+          New-Item -ItemType Directory -Path '${{ runner.temp }}/${{ env.ARTIFACTS_DIR }}' -Force | Out-Null
+          $files | Move-Item -Destination '${{ runner.temp }}/${{ env.ARTIFACTS_DIR }}' -Force
+
+      - name: Publish Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ runner.temp }}\${{ env.ARTIFACTS_DIR }}
+          if-no-files-found: error
+
+      # 3) Run tests and publish test results
+      # See docs/workflow/testing/libraries/testing.md
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $projects = Get-ChildItem -Path "${{ env.STJ_PROJECT_DIR }}\tests" -Recurse -Filter '*.Tests.*proj'
+          $projects | ForEach-Object {
+            $project = $_.FullName
+            Write-Host "Running tests for project: $project"
+            & .\build.cmd -subset libs -test `
+              -projects $project `
+              -c "${{ env.BUILD_CONFIGURATION }}" `
+              /p:EnablePackageValidation=false
+          }
+          
+      - name: Publish test results
+        if: (!cancelled())
+        uses: EnricoMi/publish-unit-test-result-action/windows@v2
+        with:
+          files: 'artifacts/**/testResults.xml'
+          check_name: System.Text.Json Test Results
+
+  publish-packages:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Download System.Text.Json packages
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/${{ env.ARTIFACT_NAME }}
+
+      - name: List packages to publish
+        shell: bash
+        run: ls -lA ${{ runner.temp }}/${{ env.ARTIFACT_NAME }}
+
+      - name: Publish nupkg and symbols.nupkg to GitHub Packages
+        shell: bash
+        run: >-
+          cd "${{ runner.temp }}/${{ env.ARTIFACT_NAME }}" &&
+          dotnet nuget push *.nupkg
+          --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+          --api-key "${{ secrets.GITHUB_TOKEN }}"
+          --skip-duplicate
+          
